@@ -2,6 +2,6 @@ Repository for class project. In this work we formulate the meta-learning apprao
 
 Todo:
 
-- [ ] Run MAML as it is.
+- [x] Run MAML as it is. (Completed - 5th April)
 - [ ] Use it for your work and incorporate your own pipeline. 
 

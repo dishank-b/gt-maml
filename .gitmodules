@@ -1,3 +1,0 @@
-[submodule "src/pytorch-maml"]
-	path = src/pytorch-maml
-	url = https://github.com/tristandeleu/pytorch-maml.git
