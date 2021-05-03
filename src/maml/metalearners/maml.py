@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from tqdm import tqdm
+import os
 
 from collections import OrderedDict
 from torchmeta.utils import gradient_update_parameters
@@ -96,7 +97,7 @@ class ModelAgnosticMetaLearning(object):
                 self.scheduler.base_lrs([group['initial_lr']
                     for group in self.optimizer.param_groups])
 
-    def get_outer_loss(self, batch):
+    def get_outer_loss(self, batch, train=True):
         if 'test' not in batch:
             raise RuntimeError('The batch does not contain any test dataset.')
 
@@ -167,15 +168,21 @@ class ModelAgnosticMetaLearning(object):
 
         return params, results
 
-    def train(self, dataloader, max_batches=500, verbose=True, **kwargs):
+    def train(self, dataloader, log_dir, max_batches=500, verbose=True, **kwargs):
         with tqdm(total=max_batches, disable=not verbose, **kwargs) as pbar:
             for results in self.train_iter(dataloader, max_batches=max_batches):
+                for key in results.keys():
+                    if key not in log_dir.keys():
+                        log_dir[key] = [results[key]]
+                    else:
+                        log_dir[key].append(results[key])
                 pbar.update(1)
                 postfix = {'loss': '{0:.4f}'.format(results['mean_outer_loss'])}
                 if 'accuracies_after' in results:
                     postfix['accuracy'] = '{0:.4f}'.format(
                         np.mean(results['accuracies_after']))
                 pbar.set_postfix(**postfix)
+        
 
     def train_iter(self, dataloader, max_batches=500):
         if self.optimizer is None:
@@ -235,7 +242,7 @@ class ModelAgnosticMetaLearning(object):
                     break
 
                 batch = tensors_to_device(batch, device=self.device)
-                _, results = self.get_outer_loss(batch)
+                _, results = self.get_outer_loss(batch, train=False)
                 yield results
 
                 num_batches += 1

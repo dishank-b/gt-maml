@@ -4,11 +4,12 @@ import os
 import time
 import json
 import logging
+import numpy as np
 
 from torchmeta.utils.data import BatchMetaDataLoader
 
 from maml.datasets import get_benchmark_by_name
-from maml.metalearners import ModelAgnosticMetaLearning
+from maml.metalearners import ModelAgnosticMetaLearning, Pareto_MAML
 
 def main(args):
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO)
@@ -52,6 +53,7 @@ def main(args):
                                               pin_memory=True)
 
     meta_optimizer = torch.optim.Adam(benchmark.model.parameters(), lr=args.meta_lr)
+    
     metalearner = ModelAgnosticMetaLearning(benchmark.model,
                                             meta_optimizer,
                                             first_order=args.first_order,
@@ -59,13 +61,24 @@ def main(args):
                                             step_size=args.step_size,
                                             loss_function=benchmark.loss_function,
                                             device=device)
-
+    
+    # metalearner = Pareto_MAML(benchmark.model,
+    #                         meta_optimizer,
+    #                         first_order=args.first_order,
+    #                         num_adaptation_steps=args.num_steps,
+    #                         step_size=args.step_size,
+    #                         loss_function=benchmark.loss_function,
+    #                         device=device)
     best_value = None
 
     # Training loop
     epoch_desc = 'Epoch {{0: <{0}d}}'.format(1 + int(math.log10(args.num_epochs)))
+
+    train_logs = {}
+    val_logs = {}
     for epoch in range(args.num_epochs):
         metalearner.train(meta_train_dataloader,
+                          log_dir=train_logs,
                           max_batches=args.num_batches,
                           verbose=args.verbose,
                           desc='Training',
@@ -74,6 +87,12 @@ def main(args):
                                        max_batches=args.num_batches,
                                        verbose=args.verbose,
                                        desc=epoch_desc.format(epoch + 1))
+
+        for key in results.keys():
+            if key not in val_logs.keys():
+                val_logs[key] = [results[key]]
+            else:
+                val_logs[key].append(results[key])
 
         # Save best model
         if 'accuracies_after' in results:
@@ -87,8 +106,14 @@ def main(args):
             save_model = False
 
         if save_model and (args.output_folder is not None):
-            with open(args.model_path, 'wb') as f:
+            with open(os.path.abspath(os.path.join(folder, 'model_'+ str(epoch) +'.th')), 'wb') as f:
                 torch.save(benchmark.model.state_dict(), f)
+    
+    for key in train_logs.keys():
+        np.save(os.path.join(folder, key+'.npy'), np.array(train_logs[key]))
+    
+    for key in val_logs.keys():
+        np.save(os.path.join(folder, key+'_val.npy'), np.array(val_logs[key]))
 
     if hasattr(benchmark.meta_train_dataset, 'close'):
         benchmark.meta_train_dataset.close()
